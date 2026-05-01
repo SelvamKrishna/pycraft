@@ -6,6 +6,7 @@ import shutil
 
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 
 import pymake_cfg as cfg
 
@@ -19,6 +20,7 @@ def _get_target() -> Path:
 
 TARGET = _get_target()
 OBJ_DIR = Path(cfg.OUT_DIR)
+VALID_EXTENSIONS = {".c", ".cc", ".cpp", ".c++", ".cxx"}
 
 flag_verbose = False
 
@@ -29,29 +31,32 @@ def _ansi_print(color: str, message: str, end: str = "\n") -> None:
 
 def _print_err(exit_code: int, message: str, flag_exit: bool = True) -> None:
     _ansi_print(colorama.Fore.RED, f"Error: {message}")
-
     if flag_exit:
         sys.exit(exit_code)
 
 
 def _print_help_message() -> None:
+    def _print_usage(cmd: str, desc: str) -> None:
+        print(f"    {sys.argv[0]} {cmd} => ", end="")
+        _ansi_print(colorama.Fore.BLUE, desc)
+
+    def _print_flag(cmd: str, desc: str) -> None:
+        print(f"    {cmd} => ", end="")
+        _ansi_print(colorama.Fore.BLUE, desc)
+
     _ansi_print(colorama.Style.BRIGHT, f"PyMake v{cfg.VERSION}")
+
     _ansi_print(colorama.Style.BRIGHT, f"\nUsage:")
-    print(f"    {sys.argv[0]} debug [flags]   => ", end="")
-    _ansi_print(colorama.Fore.BLUE, "Build with debug symbols")
-    print(f"    {sys.argv[0]} release [flags] => ", end="")
-    _ansi_print(colorama.Fore.BLUE, "Build optimized")
-    print(f"    {sys.argv[0]} run [args...]   => ", end="")
-    _ansi_print(colorama.Fore.BLUE, "Run binary")
+    _print_usage("[--help | -h]", "Show this help")
+    _print_usage("debug [flags]", "Build with debug symbols")
+    _print_usage("release [flags]", "Build optimized")
+    _print_usage("run", "Run binary")
+
     _ansi_print(colorama.Style.BRIGHT, f"\nFlags:")
-    print(f"    --verbose | -v  => ", end="")
-    _ansi_print(colorama.Fore.BLUE, "Show commands")
-    print(f"    --clean   | -c  => ", end="")
-    _ansi_print(colorama.Fore.BLUE, "Clean build first")
-    print(f"    --run     | -r  => ", end="")
-    _ansi_print(colorama.Fore.BLUE, "Run after build")
-    print(f"    --help    | -h  => ", end="")
-    _ansi_print(colorama.Fore.BLUE, "Show this help")
+    _print_flag("--verbose | -v", "Show commands")
+    _print_flag("--clean   | -c", "Clean build first")
+    _print_flag("--run     | -r", "Run after build")
+
     print("")
     sys.exit(0)
 
@@ -65,80 +70,93 @@ def _run_cmd(cmd: list[str]) -> subprocess.CompletedProcess:
 
 class ProjectBuilder:
     def __init__(self, flag_clean: bool, is_mode_release: bool) -> None:
-        out_dir = Path(cfg.OUT_DIR)
-        src_dir = Path(cfg.SRC_DIR)
+        self.out_dir = Path(cfg.OUT_DIR)
+        self.src_dir = Path(cfg.SRC_DIR)
+        self.mode_release: bool = is_mode_release
 
-        if flag_clean and out_dir.exists():
-            shutil.rmtree(out_dir)
+        self.sources = self._collect_srcs()
 
-        out_dir.mkdir(parents=True, exist_ok=True)
+        if not self.sources:
+            _print_err(1, "No sources found")
 
-        if not src_dir.exists():
-            _print_err(1, f"Source directory `{src_dir}` not found")
+        self._prepare_dirs(flag_clean)
+        self.exec_cmd = self._build_exec_cmd()
 
-        self.sources = sorted(
+    def _prepare_dirs(self, flag_clean: bool):
+        if flag_clean and self.out_dir.exists():
+            shutil.rmtree(self.out_dir)
+
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+
+        if not self.src_dir.exists():
+            _print_err(1, f"Source directory `{self.src_dir}` not found")
+
+    def _collect_srcs(self) -> list[Path]:
+        return sorted(
             Path(source)
-            for source in src_dir.rglob("*")
-            if source.suffix in {".c", ".cc", ".cpp", ".c++", ".cxx"}
+            for source in self.src_dir.rglob("*")
+            if source.suffix in VALID_EXTENSIONS
         )
 
-        self.exec_cmd = [
-            cfg.CC,
-            f"-std={cfg.STANDARD}",
-            *cfg.CXX_FLAGS,
-        ]
+    def _build_exec_cmd(self) -> list[str]:
+        exec_cmd = [cfg.CC, f"-std={cfg.STANDARD}", *cfg.CXX_FLAGS]
 
-        if is_mode_release:
-            self.exec_cmd.extend(["-O2", "-DNDEBUG", "-s"])
+        if self.mode_release:
+            exec_cmd.extend(["-O2", "-DNDEBUG", "-s"])
         else:
-            self.exec_cmd.append("-g")
+            exec_cmd.extend(["-O0", "-g"])
 
-        self.exec_cmd.extend(f"-I{inc_dir}" for inc_dir in cfg.INC_DIRS)
-        self.exec_cmd.extend(f"-D{define}" for define in cfg.DEFINES)
-        self.exec_cmd.extend(f"-L{lib_dir}" for lib_dir in cfg.LIB_DIRS)
-        self.exec_cmd.extend(f"-l{library}" for library in cfg.LIBRARIES)
+        exec_cmd.extend(f"-I{inc_dir}" for inc_dir in cfg.INC_DIRS)
+        exec_cmd.extend(f"-D{define}" for define in cfg.DEFINES)
+        exec_cmd.extend(f"-L{lib_dir}" for lib_dir in cfg.LIB_DIRS)
+        exec_cmd.extend(f"-l{library}" for library in cfg.LIBRARIES)
 
-        self.mode = "release" if is_mode_release else "debug"
+        return exec_cmd
 
-    def _check_source_recompile(self, source: Path, obj_path: Path) -> bool:
-        if not obj_path.exists():
-            return True
-        return source.stat().st_mtime > obj_path.stat().st_mtime
+    @staticmethod
+    def _need_recompile(src_path: Path, obj_path: Path) -> bool:
+        return not obj_path.exists() or src_path.stat().st_mtime > obj_path.stat().st_mtime
+
+    @staticmethod
+    def _get_obj_path(source: Path) -> Path:
+        relative_path = source.relative_to(Path(cfg.SRC_DIR))
+        obj_path = OBJ_DIR / relative_path.with_suffix(".o")
+        obj_path.parent.mkdir(parents=True, exist_ok=True)
+        return obj_path
 
     def _compile_source(self, source: Path) -> Path:
-        obj_path = OBJ_DIR / \
-            source.relative_to(Path(cfg.SRC_DIR)).with_suffix(".o")
-        obj_path.parent.mkdir(parents=True, exist_ok=True)
+        obj_path = self._get_obj_path(source)
 
-        if not self._check_source_recompile(source, obj_path):
+        if not self._need_recompile(source, obj_path):
             return obj_path
 
-        cmd_result = _run_cmd(
-            [*self.exec_cmd, "-c", str(source), "-o", str(obj_path)]
-        )
+        cmd_result = _run_cmd([
+            *self.exec_cmd, "-c", str(source), "-o", str(obj_path)
+        ])
 
         if cmd_result.returncode != 0:
             _print_err(cmd_result.returncode, f"Failed to compile `{source}`")
 
         return obj_path
 
-    def build(self) -> None:
-        if not self.sources:
-            _print_err(1, "No sources found")
-
-        objects = []
+    def _compile_all(self) -> list[Path]:
         with ThreadPoolExecutor(max_workers=cfg.PARALLEL) as pool:
-            objects = list(pool.map(self._compile_source, self.sources))
+            return list(pool.map(self._compile_source, self.sources))
 
-        cmd_result = _run_cmd(
-            [*self.exec_cmd, *[str(obj) for obj in objects], "-o", str(TARGET)]
-        )
+    def _link(self, objects: list[Path]) -> None:
+        obj_str = [str(obj) for obj in objects]
+        cmd_result = _run_cmd([*self.exec_cmd, *obj_str, "-o", str(TARGET)])
 
         if cmd_result.returncode != 0:
             _print_err(cmd_result.returncode, "Failed to link")
 
+    def build(self) -> None:
+        self._link(self._compile_all())
+
     @staticmethod
-    def run(arguments: list[str] = []) -> None:
+    def run(arguments: list[str] | None = None) -> None:
+        arguments = [] if arguments is None else arguments
+
         if not TARGET.exists():
             _print_err(1, f"Target `{TARGET}` not found")
 
@@ -149,34 +167,53 @@ class ProjectBuilder:
             sys.exit(130)
 
 
+@dataclass(frozen=True)
+class CLI:
+    command: str
+    verbose: bool
+    release: bool
+    clean: bool
+    run_after: bool
+    args: list[str]
+
+    @staticmethod
+    def parse() -> CLI:
+        if len(sys.argv) <= 1:
+            _print_help_message()
+
+        main_cmd = sys.argv[1].strip().lower()
+
+        if main_cmd in ("--help", "-h"):
+            _print_help_message()
+
+        if main_cmd not in {"debug", "release", "run"}:
+            _print_err(1, f"Unknown command `{main_cmd}`")
+
+        return CLI(
+            command=main_cmd,
+            verbose="--verbose" in sys.argv or "-v" in sys.argv,
+            release=main_cmd == "release",
+            clean=main_cmd == "release" or "--clean" in sys.argv or "-c" in sys.argv,
+            run_after="--run" in sys.argv or "-r" in sys.argv,
+            args=sys.argv[2:]
+        )
+
+
 def main() -> None:
+    cli = CLI.parse()
+
     global flag_verbose
+    flag_verbose = cli.verbose
 
-    if len(sys.argv) <= 1:
-        _print_help_message()
-
-    main_cmd = sys.argv[1].strip().lower()
-
-    if main_cmd in ("--help", "-h"):
-        _print_help_message()
-
-    if main_cmd not in {"debug", "release", "run"}:
-        _print_err(1, f"Unknown command `{main_cmd}`")
-
-    if main_cmd == "run":
+    if cli.command == "run":
         ProjectBuilder.run(sys.argv[2:])
         sys.exit(0)
 
-    flag_verbose = "--verbose" in sys.argv or "-v" in sys.argv
-    flag_release = main_cmd == "release"
-    flag_clean = flag_release or "--clean" in sys.argv or "-c" in sys.argv
-    flag_run = "--run" in sys.argv or "-r" in sys.argv
-
-    builder = ProjectBuilder(flag_clean, flag_release)
+    builder = ProjectBuilder(cli.clean, cli.release)
     builder.build()
 
-    if flag_run:
-        builder.run(sys.argv[2:])
+    if cli.run_after:
+        builder.run()
 
 
 if __name__ == "__main__":
