@@ -218,29 +218,29 @@ class Log:
         print(*args, **kwargs)
         print(colorama.Style.RESET_ALL, end="")
 
-    @staticmethod
-    def dbg(message: str) -> None:
+    @classmethod
+    def dbg(cls, message: str) -> None:
         if Log.f_verbose:
             print(f"{Log._wrap(colorama.Fore.CYAN, "debug: ")}{message}")
 
-    @staticmethod
-    def err(message: str, err_code: int = 1) -> None:
+    @classmethod
+    def err(cls, message: str, err_code: int = 1) -> None:
         print(f"{Log._wrap(colorama.Fore.RED, "error: ")}{message}")
         sys.exit(err_code)
 
-    @staticmethod
-    def ok(message: str) -> None:
+    @classmethod
+    def ok(cls, message: str) -> None:
         if Log.f_verbose:
             print(f"{Log._wrap(colorama.Fore.GREEN, "ok: ")}{message}")
 
-    @staticmethod
-    def cmd(cmd: list[str]) -> None:
+    @classmethod
+    def cmd(cls, cmd: list[str]) -> None:
         if Log.f_verbose:
             command = " ".join(str(c) for c in cmd)
             print(f"{Log._wrap(colorama.Style.DIM, f"> {command}")}")
 
-    @staticmethod
-    def pymake() -> None:
+    @classmethod
+    def pymake(cls) -> None:
         Log.print(colorama.Style.BRIGHT, f"PyMake v{VERSION}")
         Log.print(colorama.Fore.BLUE, f"Platform: ", end="")
         Log.print(f"{PLATFORM} {platform.release()}")

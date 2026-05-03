@@ -13,10 +13,10 @@ PROJ_CFG = pymake.ProjectConfig(
 if __name__ == "__main__":
     assert pymake.VERSION == 1
 
-    if DEV:
-        BUILD_CFG = pymake.CLI.get_build_config()
-    else:
-        BUILD_CFG = pymake.BuildConfig(mode=pymake.BuildMode.RELEASE)
+    BUILD_CFG = pymake.CLI.get_build_config() if DEV \
+    else pymake.BuildConfig(mode=pymake.BuildMode.RELEASE, is_verbose=True)
+
+    BUILD_CFG = pymake.BuildConfig(mode=BUILD_CFG.mode, should_run_after=True)
 
     pymake.init(verbose=BUILD_CFG.is_verbose)
 
