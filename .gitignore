@@ -1,3 +1,4 @@
+
 *.exe
 *.obj
 *.o
@@ -8,3 +9,4 @@
 /__pycache__/
 /build/
 /source/
+/external/

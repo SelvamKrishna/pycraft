@@ -3,7 +3,6 @@ import time
 import platform
 import subprocess
 import shutil
-import colorama
 
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -64,8 +63,8 @@ class ProjectConfig:
 
 class Project:
     def __init__(self, cfg: ProjectConfig) -> None:
-        self.verbose = False
         self.cfg = cfg
+        self.verbose = False
         self.exec_cmd = [
             self.cfg.cc, f"-std={self.cfg.standard}", *self.cfg.cxx_flags
         ]
@@ -81,9 +80,7 @@ class Project:
 
     def _collect_srcs(self) -> list[Path]:
         if not self.cfg.src_dir.exists():
-            Log.err(
-                f"Source directory $Y`{self.cfg.src_dir}`$_ does not exist"
-            )
+            Log.err(f"Source directory `{self.cfg.src_dir}` not found")
 
         srcs = [
             path for path in self.cfg.src_dir.rglob("*")
@@ -91,20 +88,24 @@ class Project:
         ]
 
         if not srcs:
-            Log.err(f"No source files found in $Y`{str(self.cfg.src_dir)}`$_")
+            Log.err(f"No source files found in {str(self.cfg.src_dir)}")
 
-        return sorted(srcs)
+        return srcs
 
     def _compile_srcs(self) -> list[Path]:
-        objects: list[Path | None] = [None] * len(self._collect_srcs())
+        sources: list[Path] = self._collect_srcs()
+        objects: list[Path | None] = [None] * len(sources)
+        failed = False
 
-        def compile_file(idx: int, src: Path) -> tuple[int, Path | None]:
+        def compile_file(idx: int, src: Path) -> tuple[int, Path | None, bool]:
             rel_path = src.relative_to(self.cfg.src_dir)
             obj = self.cfg.out_dir / rel_path.with_suffix(".o")
             obj.parent.mkdir(parents=True, exist_ok=True)
 
             if not Project._needs_compile(src, obj):
-                return idx, obj
+                if self.verbose:
+                    Log.info(f"(up to date) {src.name} -> {obj.name}")
+                return idx, obj, False
 
             cmd = [
                 *self.exec_cmd,
@@ -112,29 +113,32 @@ class Project:
                 "-o", str(obj.relative_to(Path.cwd()))
             ]
 
-            code = run_cmd(cmd, check=False).returncode
-            Log._result(
-                f"$B`{src.name}`$_ -> $B`{obj.name}`$_", code, self.verbose
-            )
+            result = run_cmd(cmd, check=False)
+            success = result.returncode == 0
 
-            return idx, obj
+            if success:
+                Log.info(f"{src.name} -> {obj.name}")
+            else:
+                Log.err(
+                    f"Failed to compile {src.name}", result.returncode, exit=False)
 
-        srcs = self._collect_srcs()
+            return idx, obj if success else None, not success
 
         with ThreadPoolExecutor(max_workers=self.cfg.parallel) as executor:
             futures = {
                 executor.submit(compile_file, i, src): i
-                for i, src in enumerate(srcs)
+                for i, src in enumerate(sources)
             }
 
             for future in as_completed(futures):
-                idx, obj = future.result()
+                idx, obj, has_error = future.result()
                 objects[idx] = obj
+                failed = failed or has_error
 
         valid_objects = [obj for obj in objects if obj is not None]
 
-        if len(valid_objects) != len(srcs):
-            Log.err("Compilation failed", len(srcs) - len(valid_objects))
+        if failed:
+            Log.err("Compilation failed", 1)
 
         return valid_objects
 
@@ -149,34 +153,40 @@ class Project:
             "-o", str(target.relative_to(Path.cwd()))
         ]
 
-        code = run_cmd(cmd, check=False).returncode
+        result = run_cmd(cmd, check=False)
+        code = result.returncode
 
         if code == 0 and PLATFORM != "Windows":
             target.chmod(target.stat().st_mode | 0o111)
 
-        Log._result(f"Link '$B{self.cfg.name}$_' to '$Y{target}$_'", code)
+        if code == 0:
+            Log.info(f"Project {self.cfg.name} built to `{target}`")
+        else:
+            Log.err(f"Failed to link project {self.cfg.name}", code)
 
     def build(self, build_cfg: BuildConfig) -> None:
+        self.verbose = Log.f_verbose = build_cfg.is_verbose
+
         if build_cfg.is_mode_run():
             return
-
-        self.verbose = build_cfg.is_verbose
 
         if build_cfg.should_clean:
             if self.cfg.out_dir.exists():
                 shutil.rmtree(self.cfg.out_dir)
-                Log.ok(f"Cleaned `$Y{self.cfg.out_dir}$_`", self.verbose)
+                Log.info(f"Cleaned `{self.cfg.out_dir}`")
             self.cfg.out_dir.mkdir(parents=True, exist_ok=True)
 
         if build_cfg.is_mode_release():
             self.exec_cmd.extend(["-O2", "-DNDEBUG", "-s"])
+            Log.info("Building in __RELEASE__ mode")
         else:
             self.exec_cmd.extend(["-O0", "-g"])
+            Log.info("Building in __DEBUG__ mode")
 
-        self.exec_cmd.extend(f"-D{ddf}" for ddf in self.cfg.defines)
-        self.exec_cmd.extend(f"-I{dir}" for dir in self.cfg.inc_dirs)
-        self.exec_cmd.extend(f"-L{dir}" for dir in self.cfg.lib_dirs)
-        self.exec_cmd.extend(f"-l{lib}" for lib in self.cfg.libraries)
+        self.exec_cmd.extend([f"-D{ddf}" for ddf in self.cfg.defines])
+        self.exec_cmd.extend([f"-I{dir}" for dir in self.cfg.inc_dirs])
+        self.exec_cmd.extend([f"-L{dir}" for dir in self.cfg.lib_dirs])
+        self.exec_cmd.extend([f"-l{lib}" for lib in self.cfg.libraries])
 
         start_time = time.time()
         objs = self._compile_srcs()
@@ -187,7 +197,7 @@ class Project:
         self._link(objs)
         elapsed = time.time() - start_time
 
-        Log.ok(f"Build successful! Took $C[{elapsed:.2f}s]$_")
+        Log.info(f"Build successful! ({elapsed:.2f}s)")
 
     def run(self, arguments: list[str] | None = None) -> None:
         if arguments is None:
@@ -196,19 +206,99 @@ class Project:
         target = self.cfg.target()
 
         if not target.exists():
-            Log.err(f"Target `{target}` not found. Please build first.")
+            Log.err(f"Target `{target}` not found.")
 
-        Log.print(f"Running: $C{target}$_")
+        Log.info(f"Running `{target}`")
 
         try:
-            subprocess.check_call([str(target), *arguments])
+            subprocess.run([str(target), *arguments], check=True)
         except KeyboardInterrupt:
             print()
             sys.exit(130)
         except FileNotFoundError:
-            Log.err(f"Executable `{target}` not found or not executable")
+            Log.err(f"Executable `{target}` not found")
+        except subprocess.CalledProcessError as e:
+            Log.err("Executable failed", e.returncode)
         except Exception as e:
             Log.err(f"Failed to run executable: {e}")
+
+
+class PackageKind(Enum):
+    WEB = 1
+    GIT = 2
+    ARCHIVE = 3
+    MANUAL = 4
+
+
+class Package:
+    def __init__(self, path: Path, kind: PackageKind, link: str) -> None:
+        self.name = path.name
+        self.path = path
+        self.kind = kind
+        self.link = link
+
+    def check(self) -> bool:
+        return self.path.exists() and any(self.path.iterdir())
+
+    def uninstall(self, suppress_warning: bool = False) -> None:
+        if self.path.exists():
+            shutil.rmtree(self.path)
+            Log.info(f"Removed package {self.name} from `{self.path}`")
+        elif not suppress_warning:
+            Log.warn(f"Package {self.name.upper()} not found")
+
+    def _clone_from_git(self) -> None:
+        Log.info(f"Cloning {self.name} from `{self.link}`...")
+        self.uninstall(True)
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+        result = run_cmd(
+            ["git", "clone", "--depth", "1", self.link, str(self.path)], check=False)
+
+        if result.returncode == 0:
+            Log.info(f"Successfully cloned package {self.name}")
+        else:
+            Log.err(f"Failed to clone package {self.name}", result.returncode)
+
+    def _install_from_web(self) -> None:
+        Log.info(f"Downloading {self.name} from `{self.link}`...")
+        self.uninstall(True)
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+        result = run_cmd(
+            ["curl", "-L", "--fail", self.link, "-o", str(self.path)], check=False)
+
+        if result.returncode == 0:
+            Log.info(f"Successfully downloaded package {self.name}")
+        else:
+            Log.err(
+                f"Failed to download package {self.name}", result.returncode)
+
+    def _install_from_archive(self) -> None:
+        pass
+
+    def _manual_help(self) -> None:
+        Log.warn(f"Please install package {self.name}")
+        Log.warn(f"Download link `{self.link}`")
+        Log.warn(f"Package destination `{self.path.absolute()}`")
+        sys.exit(1)
+
+    def install(self) -> None:
+        if self.check():
+            Log.info(f"Package {self.name} already installed")
+            return
+
+        match self.kind:
+            case PackageKind.WEB: self._install_from_web()
+            case PackageKind.GIT: self._clone_from_git()
+            case PackageKind.ARCHIVE: self._install_from_archive()
+            case PackageKind.MANUAL: self._manual_help()
+
+    def ensure(self) -> None:
+        if not self.check():
+            self.install()
 
 
 class CLI:
@@ -225,7 +315,7 @@ class CLI:
             case "release": mode = BuildMode.RELEASE
             case "run": mode = BuildMode.RUN
             case "--version" | "-v":
-                Log._pymake()
+                Log.print_version()
                 sys.exit(0)
             case _:
                 CLI.print_help()
@@ -241,67 +331,63 @@ class CLI:
 
     @staticmethod
     def print_help() -> None:
-        Log._pymake()
-        Log.print(colorama.Style.DIM, "=" * 80)
-        Log.print(colorama.Style.BRIGHT, "Usage:")
-        Log.print(f"    {sys.argv[0]} $C<command>$_ $D[options]$_")
+        Log.print_version()
+        Log.print("=" * 80)
+        Log.print("Usage:")
+        Log.print(f"  {sys.argv[0]} <command> [options]")
         print()
-        Log.print(colorama.Style.BRIGHT, "Commands:")
-        Log.print(f"    $Cdebug$_       Build with debug symbols")
-        Log.print(f"    $Crelease$_     Build optimized for release")
-        Log.print(f"    $Crun$_         Run the built executable")
+        Log.print("Commands:")
+        Log.print(f"  debug          Build with debug symbols")
+        Log.print(f"  release        Build optimized for release")
+        Log.print(f"  run            Run the built executable")
         print()
-        Log.print(colorama.Style.BRIGHT, "Options:")
-        Log.print(f"    $C-c, --clean$_   Clean before building")
-        Log.print(f"    $C-r, --run$_     Run after building (for debug/release)")
-        Log.print(f"    $C-v, --verbose$_ Show detailed build commands")
-        Log.print(f"    $C-h, --help$_    Show this help message")
+        Log.print("Options:")
+        Log.print(f"  -c, --clean    Clean before building")
+        Log.print(f"  -r, --run      Run after building")
+        Log.print(f"  -v, --verbose  Show detailed build output")
+        Log.print(f"  -h, --help     Show this help message")
         print()
+        Log.print("=" * 80)
 
 
 class Log:
+    f_verbose: bool = False
+
     @classmethod
-    def _pymake(cls) -> None:
-        Log.print(colorama.Style.BRIGHT, f"PyMake v{VERSION}")
+    def print_version(cls) -> None:
+        cls.print(f"PyMake v{VERSION}")
 
     @staticmethod
     def print(*args, **kwargs) -> None:
         message = " ".join(str(arg) for arg in args)
-
-        TAGS_LUT: tuple[tuple[str, str], ...] = (
-            ('$B', colorama.Style.BRIGHT),
-            ('$D', colorama.Style.DIM),
-            ('$R', colorama.Style.RESET_ALL),
-            ('$G', colorama.Fore.GREEN),
-            ('$Y', colorama.Fore.YELLOW),
-            ('$R', colorama.Fore.RED),
-            ('$C', colorama.Fore.CYAN),
-            ('$M', colorama.Fore.MAGENTA),
-            ('$_', colorama.Style.RESET_ALL),
-        )
-
-        for tag, color in TAGS_LUT:
-            message = message.replace(tag, color)
-
         print(message, **kwargs)
 
     @classmethod
-    def err(cls, message: str, err_code: int = 1) -> None:
-        cls.print(f"$R[error:{err_code}]$_ $R{message}$_")
-        sys.exit(err_code)
+    def err(cls, message: str, err_code: int = 1, exit: bool = True) -> None:
+        cls.print(f"[ERROR:{err_code}]: {message}")
+        if exit:
+            sys.exit(err_code)
 
     @classmethod
-    def ok(cls, message: str, show: bool = True) -> None:
-        if show:
-            cls.print(f"$G[ok]$_ {message}")
+    def warn(cls, message: str) -> None:
+        cls.print(f"[WARNING]: {message}")
 
     @classmethod
-    def _result(cls, message: str, code: int, show: bool = True) -> None:
-        cls.ok(message, show) if code == 0 else cls.err(message, code)
+    def info(cls, message: str) -> None:
+        if cls.f_verbose:
+            cls.print(f"[INFO]: {message}")
 
 
-def init() -> None:
-    colorama.init(autoreset=True)
+def init(is_verbose: bool = False) -> None:
+    Log.f_verbose = is_verbose
+
+
+def get_version() -> int:
+    return VERSION
+
+
+def get_platform() -> str:
+    return PLATFORM
 
 
 def run_cmd(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
@@ -311,8 +397,7 @@ def run_cmd(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
         )
 
         if result.returncode != 0 and result.stderr:
-            Log.print(colorama.Style.DIM, f"$ {' '.join(cmd)}")
-            Log.print(result.stderr)
+            Log.print(result.stderr.strip())
 
         return result
 
@@ -321,8 +406,8 @@ def run_cmd(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
     except Exception as e:
         Log.err(f"Failed to run command: {e}")
 
-    sys.exit(1)
+    return subprocess.CompletedProcess(cmd, 1, "", "")  # unreachable
 
 
 if __name__ == "__main__":
-    Log._pymake()
+    Log.print_version()

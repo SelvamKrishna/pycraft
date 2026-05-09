@@ -9,10 +9,17 @@ PROJ_CFG = pymake.ProjectConfig(
 )
 
 if __name__ == "__main__":
-    assert pymake.VERSION == 2
-    pymake.init()
-
     BUILD_CFG = pymake.CLI.get_build_config()
+
+    pymake.init(is_verbose=BUILD_CFG.is_verbose)
+    assert pymake.get_version() == 2
+
+    pymake.Package(
+        path=Path("external/raylib"),
+        kind=pymake.PackageKind.GIT,
+        link="https://github.com/raysan5/raylib.git",
+    ).ensure()
+
 
     proj = pymake.Project(PROJ_CFG)
     proj.build(BUILD_CFG)
