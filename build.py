@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import pymake
+import pymake.cli
+import pymake.pck
 
 PROJ_CFG = pymake.ProjectConfig(
     name="pymake_test",
@@ -9,17 +11,16 @@ PROJ_CFG = pymake.ProjectConfig(
 )
 
 if __name__ == "__main__":
-    BUILD_CFG = pymake.CLI.get_build_config()
+    BUILD_CFG = pymake.cli.get_build_config()
 
-    pymake.init(is_verbose=BUILD_CFG.is_verbose)
-    assert pymake.get_version() == 2
+    pymake.init(silent=not BUILD_CFG.is_verbose)
+    assert pymake._cfg.get_version() == 2
 
-    pymake.Package(
+    pymake.pck.Package(
         path=Path("external/raylib"),
-        kind=pymake.PackageKind.GIT,
+        kind=pymake.pck.PackageKind.GIT,
         link="https://github.com/raysan5/raylib.git",
     ).ensure()
-
 
     proj = pymake.Project(PROJ_CFG)
     proj.build(BUILD_CFG)
