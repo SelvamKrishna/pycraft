@@ -1,24 +1,22 @@
 import subprocess
+
 from . import _log
 
 
-def call_cmd(cmd: list[str], check: bool = True, capture: bool = True) -> subprocess.CompletedProcess:
+def call_cmd(cmd: list[str], check: bool = True, capture_output: bool = False) -> None:
+    _log._cmd(cmd)
+
     try:
-        if capture:
-            result = subprocess.run(
-                cmd, check=check, capture_output=True, text=True)
-            if result.returncode != 0 and result.stderr:
-                _log.err(result.stderr.strip(), exit=False)
-            return result
-        else:
-            return subprocess.run(cmd, check=check)
-    except FileNotFoundError:
-        _log.err(f"Command not found: {cmd[0]}")
-        raise
+        subprocess.run(cmd, check=check, capture_output=capture_output)
+    except FileNotFoundError as e:
+        _log.exit_or_continue(f"Command not found: $B{cmd[0]}$0")
+    except PermissionError as e:
+        _log.err(f"Permission denied: {e.filename}", err_code=126)
     except subprocess.CalledProcessError as e:
-        _log.err(
-            f"Command failed with exit code {e.returncode}: {' '.join(cmd)}", exit=False)
-        raise
+        _log.err(f"Command failed: {' '.join(e.cmd)}")
     except Exception as e:
-        _log.err(f"Unexpected error: {e}")
-        raise
+        raise e
+
+
+def call_cmd_s(cmd: str, check: bool = True) -> None:
+    return call_cmd(cmd.split(), check)
