@@ -1,4 +1,3 @@
-
 *.exe
 *.obj
 *.o
@@ -7,6 +6,9 @@
 *.dll
 
 /__pycache__/
+*/__pycache__/
+
 /build/
 /source/
 /external/
+
