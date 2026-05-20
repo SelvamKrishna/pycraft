@@ -3,7 +3,6 @@
 ---
 
 - [ ] **Test runner** - Unit testing implementation
-- [ ] **Dependency tracking** - Generate and parse `.d` files for header dependencies
 
 ---
 
@@ -13,3 +12,4 @@
 - [x] **Show what changed** - Display which files are being recompiled
 - [x] **Packages** - External packages installation support from various sources
 - [x] **Precompiled headers** - Support PCH for faster builds
+- [x] **Dependency tracking** - Generate and parse `.d` files for header dependencies

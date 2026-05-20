@@ -65,6 +65,8 @@ class Project:
         self._compile_cmd = self._base_cmd.copy()
         self._compile_cmd.extend(self.prjcfg.cxx_flags)
 
+        self._compile_cmd.append("-MMD")
+
         if is_release:
             self._compile_cmd.extend(["-O2", "-DNDEBUG"])
             _log.info("Building in $h1RELEASE$0 mode")
@@ -104,19 +106,39 @@ class Project:
                 f"Failed to precompile header: {e}, continuing without PCH")
             self._pch_path = None
 
-    def __needs_compile(self, src: Path, obj: Path) -> bool:
+    def __parse_dependency(self, dep_file: Path) -> set[Path]:
+        if not dep_file.exists():
+            return set()
+
+        try:
+            content = dep_file.read_text().split(':', 1)
+            if len(content) < 2:
+                return set()
+
+            return set(Path(dep) for dep in content[1].strip().split())
+
+        except Exception:
+            pass
+
+        return set()
+
+    def __needs_compile(self, src: Path, obj: Path, dep_file: Path) -> bool:
         if not obj.exists():
             return True
 
         if src.stat().st_mtime > obj.stat().st_mtime:
             return True
 
-        # TODO: Check header dependencies if you want more accurate tracking
+        for dep in self.__parse_dependency(dep_file):
+            if Path(dep).exists() and Path(dep).stat().st_mtime > obj.stat().st_mtime:
+                return True
+
         return False
 
     def __collect_srcs(self) -> list[Path]:
         if not self.prjcfg.src_dir.exists():
-            _log.err(f"Source directory $dir`{self.prjcfg.src_dir}`$0 not found")
+            _log.err(
+                f"Source directory $dir`{self.prjcfg.src_dir}`$0 not found")
             return []
 
         srcs = [
@@ -133,9 +155,10 @@ class Project:
     def __compile_file(self, src: Path) -> Path | None:
         rel_path = src.relative_to(self.prjcfg.src_dir)
         obj = self.prjcfg.out_dir / rel_path.with_suffix(".o")
+        dep_file = self.prjcfg.out_dir / rel_path.with_suffix(".d")
         obj.parent.mkdir(parents=True, exist_ok=True)
 
-        if not self.__needs_compile(src, obj):
+        if not self.__needs_compile(src, obj, dep_file):
             _log.info(f"$D(up to date)$0 {src.name}")
             return obj
 
