@@ -1,7 +1,5 @@
 import sys
-import shutil
 from typing import NoReturn
-from pathlib import Path
 
 from . import config
 
@@ -17,19 +15,19 @@ _LUT: tuple[tuple[str, str], ...] = (
     ("$U", "\033[4m" if _COLOR_ENABLED else ""),
     ("$link", "\033[1;4m" if _COLOR_ENABLED else ""),
     ("$file", "\033[1;3m" if _COLOR_ENABLED else ""),
-    ("$dir",  "\033[2;3m" if _COLOR_ENABLED else ""),
-    ("$h1", "\033[4;34m" if _COLOR_ENABLED else ""),
+    ("$dir", "\033[1;3m" if _COLOR_ENABLED else ""),
+    ("$h1", "\033[1;34m" if _COLOR_ENABLED else ""),
 )
 
-_ERROR = f"\033[1;31m[ERROR:%d]\033[0m" if _COLOR_ENABLED else "[ERROR:%d]"
-_WARNING = f"\033[1;33m[WARNING]\033[0m" if _COLOR_ENABLED else "[WARNING]"
-_INFO = f"\033[1;32m[INFO]\033[0m" if _COLOR_ENABLED else "[INFO]"
+_ERROR = "\033[1;31m[ERROR:%d]\033[0m" if _COLOR_ENABLED else "[ERROR:%d]"
+_WARNING = "\033[1;33m[WARNING]\033[0m" if _COLOR_ENABLED else "[WARNING]"
+_INFO = "\033[1;32m[INFO]\033[0m" if _COLOR_ENABLED else "[INFO]"
 
 
 def log(*args, **kwargs) -> None:
     text = " ".join(map(str, args))
 
-    for (code, color) in _LUT:
+    for code, color in _LUT:
         text = text.replace(code, color)
 
     print(text, **kwargs)
@@ -64,7 +62,7 @@ def exit_or_continue(message: str) -> None:
         warn(message)
         log("Do you want to EXIT... $B[Y/N]$0")
         res = input(": ").strip().lower()
-        if res == 'y':
+        if res == "y":
             sys.exit(0)
-        if res == 'n':
+        if res == "n":
             return

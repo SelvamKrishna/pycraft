@@ -1,7 +1,6 @@
 import sys
 
-from . import _log
-from . import config
+from . import _log, config
 
 
 def get_build_config() -> config.BuildConfig:
@@ -12,9 +11,12 @@ def get_build_config() -> config.BuildConfig:
     command = sys.argv[1].strip().lower()
 
     match command:
-        case "debug": mode = config.BuildMode.DEBUG
-        case "release": mode = config.BuildMode.RELEASE
-        case "run": mode = config.BuildMode.RUN
+        case "debug":
+            mode = config.BuildMode.DEBUG
+        case "release":
+            mode = config.BuildMode.RELEASE
+        case "run":
+            mode = config.BuildMode.RUN
         case "--version" | "-v":
             _log.print_version()
             sys.exit(0)
@@ -26,11 +28,12 @@ def get_build_config() -> config.BuildConfig:
         mode,
         "--clean" in sys.argv or "-c" in sys.argv,
         "--run" in sys.argv or "-r" in sys.argv,
-        sys.argv[2:] if mode == config.BuildMode.RUN else None
+        sys.argv[2:] if mode == config.BuildMode.RUN else None,
     )
 
 
 def print_help() -> None:
+    _log.log("$D" + "=" * 80)
     _log.print_version()
     _log.log("$D" + "=" * 80)
     _log.log("$h1Usage:$0")

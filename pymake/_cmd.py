@@ -8,7 +8,7 @@ def call_cmd(cmd: list[str], check: bool = True, capture_output: bool = False) -
 
     try:
         subprocess.run(cmd, check=check, capture_output=capture_output)
-    except FileNotFoundError as e:
+    except FileNotFoundError as _:
         _log.exit_or_continue(f"Command not found: $B{cmd[0]}$0")
     except PermissionError as e:
         _log.err(f"Permission denied: {e.filename}", err_code=126)

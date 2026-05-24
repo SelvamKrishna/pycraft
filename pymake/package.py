@@ -1,10 +1,9 @@
 import shutil
 import sys
 from pathlib import Path
-from typing import override, Callable, Any
+from typing import Any, Callable, override
 
-from . import _log
-from . import _cmd
+from . import _cmd, _log
 
 
 class _IPackage:
@@ -19,8 +18,7 @@ class _IPackage:
     def uninstall(self, suppress_warning: bool = False) -> None:
         if self.path.exists():
             shutil.rmtree(self.path)
-            _log.info(
-                f"Removed package $B{self.name}$0 from $file`{self.path}`$0")
+            _log.info(f"Removed package $B{self.name}$0 from $file`{self.path}`$0")
         elif not suppress_warning:
             _log.warn(f"Package $B{self.name}$0 not found")
 
@@ -52,8 +50,7 @@ class GitHubPackage(_IPackage):
         _log.info(f"Cloning $B{self.name}$0 from $link`{self.link}`$0...")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            _cmd.call_cmd(
-                ["git", "clone", "--depth", "1", self.link, str(self.path)])
+            _cmd.call_cmd(["git", "clone", "--depth", "1", self.link, str(self.path)])
             _log.info(f"Successfully cloned package $B{self.name}$0")
         except Exception as e:
             _log.err(f"Failed to clone package $B{self.name}$0: {e}")
@@ -76,7 +73,8 @@ class ArchivePackage(_IPackage):
                     member_path.resolve().relative_to(extract_path.resolve())
                 except ValueError:
                     raise Exception(
-                        f"Attempted path traversal in tar file: {member.name}")
+                        f"Attempted path traversal in tar file: {member.name}"
+                    )
             tar.extractall(extract_path)
 
     @staticmethod
@@ -91,15 +89,14 @@ class ArchivePackage(_IPackage):
                 try:
                     member_path.resolve().relative_to(extract_path.resolve())
                 except ValueError:
-                    raise Exception(
-                        f"Attempted path traversal in zip file: {member}")
+                    raise Exception(f"Attempted path traversal in zip file: {member}")
             zip_ref.extractall(extract_path)
 
     @override
     def _install_impl(self) -> None:
         import tempfile
 
-        _log.info(f"Extracting $B{self.name}$0 from `{self.link}`...")
+        _log.info(f"Extracting $B{self.name}$0 from $link`{self.link}`$0...")
         self.uninstall(True)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -107,8 +104,7 @@ class ArchivePackage(_IPackage):
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".tmp") as tmp:
                 tmp_path = Path(tmp.name)
-                _cmd.call_cmd(
-                    ["curl", "-L", "--fail", self.link, "-o", str(tmp_path)])
+                _cmd.call_cmd(["curl", "-L", "--fail", self.link, "-o", str(tmp_path)])
                 tmp_path.chmod(tmp_path.stat().st_mode | 0o111)
 
             temp_extract_dir = self.path.parent / f".temp_extract_{self.name}"
@@ -128,8 +124,7 @@ class ArchivePackage(_IPackage):
             extracted_items = list(temp_extract_dir.iterdir())
 
             if not extracted_items:
-                _log.warn(
-                    f"Package $B{self.name}$0 does not contain any files")
+                _log.warn(f"Package $B{self.name}$0 does not contain any files")
                 return
 
             if len(extracted_items) == 1 and extracted_items[0].is_dir():
@@ -160,8 +155,7 @@ class WebPackage(_IPackage):
         _log.info(f"Downloading $B{self.name}$0 from $link`{self.link}`$0...")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            _cmd.call_cmd(
-                ["curl", "-L", "--fail", self.link, "-o", str(self.path)])
+            _cmd.call_cmd(["curl", "-L", "--fail", self.link, "-o", str(self.path)])
             _log.info(f"Successfully downloaded package $B{self.name}$0")
         except Exception as e:
             _log.err(f"Failed to download package $B{self.name}$0: {e}")

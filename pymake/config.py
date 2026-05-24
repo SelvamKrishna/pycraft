@@ -1,9 +1,9 @@
-import sys
 import platform
 import shutil
+import sys
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from dataclasses import dataclass
 
 from . import _log
 
@@ -59,10 +59,11 @@ def get_architecture() -> str:
 @staticmethod
 def get_default_parallel_jobs() -> int:
     import os
+
     try:
         cpu_count = os.cpu_count() or 4
         return max(1, cpu_count)
-    except:
+    except Exception as _:
         return 4
 
 

@@ -1,13 +1,15 @@
-from ._core import *
-from . import _log
+import shutil
+import sys
+from pathlib import Path
 
+from . import _core, _log, config
 
-s_proj: Project | None = None
+s_proj: _core.Project | None = None
 
 
 def init(projcfg: config.ProjectConfig, buildcfg: config.BuildConfig) -> None:
     global s_proj
-    s_proj = Project(projcfg, buildcfg)
+    s_proj = _core.Project(projcfg, buildcfg)
 
     _log.g_quiet = "--quiet" in sys.argv or "-q" in sys.argv
 

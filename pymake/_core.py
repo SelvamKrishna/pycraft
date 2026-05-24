@@ -1,27 +1,28 @@
-import sys
-import time
 import shutil
 import subprocess
-
+import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from . import _cmd
-from . import _log
-from . import config
+from . import _cmd, _log, config
 
 SOURCE_EXTENSIONS = {".cpp", ".c", ".cc", ".cxx", ".c++"}
 
 
 class Project:
-    def __init__(self, prjcfg: config.ProjectConfig, buildcfg: config.BuildConfig) -> None:
+    def __init__(
+        self, prjcfg: config.ProjectConfig, buildcfg: config.BuildConfig
+    ) -> None:
         self.prjcfg = prjcfg
         self.buildcfg: config.BuildConfig = buildcfg
         self._compile_cmd: list[str] = []
         self._link_cmd: list[str] = []
         self._pch_path: Path | None = None
         self._base_cmd: list[str] = [
-            self.prjcfg.cc.value, f"-std={self.prjcfg.standard}"]
+            self.prjcfg.cc.value,
+            f"-std={self.prjcfg.standard}",
+        ]
 
     def build(self) -> None:
         if self.buildcfg.is_mode_run():
@@ -56,7 +57,8 @@ class Project:
 
         except PermissionError as e:
             _log.err(
-                f"Permission denied while cleaning: $file{e.filename}$0", err_code=126)
+                f"Permission denied while cleaning: $file{e.filename}$0", err_code=126
+            )
 
         except Exception as e:
             _log.err(f"Failed to clean directory: $dir{e}$0")
@@ -90,11 +92,17 @@ class Project:
             return
 
         include_flag = f"-include{self.prjcfg.pch_header.stem}"
-        pch_output = self.prjcfg.out_dir / \
-            f"{self.prjcfg.pch_header.stem}.{"pch" if config.is_windows() else "gch"}"
+        pch_output = (
+            self.prjcfg.out_dir
+            / f"{self.prjcfg.pch_header.stem}.{'pch' if config.is_windows() else 'gch'}"
+        )
 
         cmd = self._compile_cmd.copy() + [
-            "-c", str(self.prjcfg.pch_header), "-o", str(pch_output)]
+            "-c",
+            str(self.prjcfg.pch_header),
+            "-o",
+            str(pch_output),
+        ]
 
         try:
             _cmd.call_cmd(cmd, check=True)
@@ -102,8 +110,7 @@ class Project:
             _log.info(f"Precompiled header: $file{pch_output}$0")
             self._compile_cmd.append(include_flag)
         except Exception as e:
-            _log.warn(
-                f"Failed to precompile header: {e}, continuing without PCH")
+            _log.warn(f"Failed to precompile header: {e}, continuing without PCH")
             self._pch_path = None
 
     def __parse_dependency(self, dep_file: Path) -> set[Path]:
@@ -111,7 +118,7 @@ class Project:
             return set()
 
         try:
-            content = dep_file.read_text().split(':', 1)
+            content = dep_file.read_text().split(":", 1)
             if len(content) < 2:
                 return set()
 
@@ -137,12 +144,12 @@ class Project:
 
     def __collect_srcs(self) -> list[Path]:
         if not self.prjcfg.src_dir.exists():
-            _log.err(
-                f"Source directory $dir`{self.prjcfg.src_dir}`$0 not found")
+            _log.err(f"Source directory $dir`{self.prjcfg.src_dir}`$0 not found")
             return []
 
         srcs = [
-            path for path in self.prjcfg.src_dir.rglob("*")
+            path
+            for path in self.prjcfg.src_dir.rglob("*")
             if path.is_file() and path.suffix in SOURCE_EXTENSIONS
         ]
 
@@ -166,12 +173,12 @@ class Project:
 
         try:
             _cmd.call_cmd(cmd, check=True)
-            _log.info(f"Compiled: {src.name}")
+            _log.info(f"Compiled: $file{src.name}$0")
             return obj
         except subprocess.CalledProcessError:
-            _log.err(f"Failed to compile {src.name}")
+            _log.err(f"Failed to compile $file{src.name}$0")
         except Exception as e:
-            _log.err(f"Failed to compile {src.name}: {e}")
+            _log.err(f"Failed to compile $file{src.name}$0: {e}")
 
     def __compile_all(self) -> list[Path]:
         sources = self.__collect_srcs()
@@ -179,15 +186,17 @@ class Project:
             return []
 
         _log.info(
-            f"Compiling $B{len(sources)} file(s)$0 with $B{self.prjcfg.parallel} jobs$0")
+            f"Compiling $B{len(sources)} file(s)$0 with $B{self.prjcfg.parallel} jobs$0"
+        )
 
         objects: list[Path] = []
         compiled_count = 0
         failed = False
 
         with ThreadPoolExecutor(max_workers=self.prjcfg.parallel) as executor:
-            futures = {executor.submit(
-                self.__compile_file, src): src for src in sources}
+            futures = {
+                executor.submit(self.__compile_file, src): src for src in sources
+            }
 
             for future in as_completed(futures):
                 src = futures[future]
@@ -205,8 +214,7 @@ class Project:
         if failed:
             _log.err("Compilation failed", 1)
 
-        _log.info(
-            f"Successfully compiled $B{compiled_count}/{len(sources)}$0 files")
+        _log.info(f"Successfully compiled $B{compiled_count}/{len(sources)}$0 files")
 
         return objects
 
@@ -227,8 +235,7 @@ class Project:
         try:
             _cmd.call_cmd(link_cmd, check=True)
             if not config.is_windows():
-                self.prjcfg.target.chmod(
-                    self.prjcfg.target.stat().st_mode | 0o111)
+                self.prjcfg.target.chmod(self.prjcfg.target.stat().st_mode | 0o111)
             _log.info(f"Linked: $file{self.prjcfg.target}$0")
         except Exception as e:
             _log.err(f"Failed to link project $U{self.prjcfg.name}$0: {e}")
@@ -239,7 +246,8 @@ class Project:
 
         if not self.prjcfg.target.exists():
             _log.err(
-                f"Target $file`{self.prjcfg.target}`$0 not found. $DPlease build first.$0")
+                f"Target $file`{self.prjcfg.target}`$0 not found. $DPlease build first.$0"
+            )
 
         _log.info(f"Running $file`{self.prjcfg.target}`$0")
 
