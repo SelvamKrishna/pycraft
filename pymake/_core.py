@@ -1,6 +1,4 @@
 import shutil
-import subprocess
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -31,6 +29,8 @@ class Project:
         if self.buildcfg.should_clean:
             self.__clean()
 
+        _log.info(f"Building project $U$B{self.prjcfg.name}$0")
+
         self.__build_command(self.buildcfg.is_mode_release())
         self.__pch()
 
@@ -43,16 +43,17 @@ class Project:
         self._link(objects)
         elapsed = time.time() - start_time
 
-        _log.info(f"Build successful! $B({elapsed:.2f}s)$0")
+        _log.ok(f"Build successful! $B({elapsed:.2f}s)$0")
 
         if self.buildcfg.should_run_after:
             self.run(self.buildcfg.run_args)
 
     def __clean(self) -> None:
+        _log.info(f"Cleaning project $B$U{self.prjcfg.name}$0")
         try:
             if self.prjcfg.out_dir.exists():
                 shutil.rmtree(self.prjcfg.out_dir)
-                _log.info(f"$DCleaned `{self.prjcfg.out_dir}`$0")
+                _log.ok(f"$DCleaned `{self.prjcfg.out_dir}`$0")
             self.prjcfg.out_dir.mkdir(parents=True, exist_ok=True)
 
         except PermissionError as e:
@@ -104,14 +105,18 @@ class Project:
             str(pch_output),
         ]
 
-        try:
-            _cmd.call_cmd(cmd, check=True)
-            self._pch_path = pch_output
-            _log.info(f"Precompiled header: $file{pch_output}$0")
-            self._compile_cmd.append(include_flag)
-        except Exception as e:
-            _log.warn(f"Failed to precompile header: {e}, continuing without PCH")
+        result = _cmd.call_cmd(cmd)
+        self._pch_path = pch_output
+        _log.info(f"Precompiled header: $file{pch_output}$0")
+        self._compile_cmd.append(include_flag)
+
+        if result is not None:
+            _log.warn(
+                f"Failed to precompile header: \n\t{result}, continuing without PCH"
+            )
             self._pch_path = None
+        else:
+            _log.ok("Precompiled header generated")
 
     def __parse_dependency(self, dep_file: Path) -> set[Path]:
         if not dep_file.exists():
@@ -166,19 +171,18 @@ class Project:
         obj.parent.mkdir(parents=True, exist_ok=True)
 
         if not self.__needs_compile(src, obj, dep_file):
-            _log.info(f"$D(up to date)$0 {src.name}")
             return obj
 
         cmd = self._compile_cmd.copy() + ["-c", str(src), "-o", str(obj)]
 
-        try:
-            _cmd.call_cmd(cmd, check=True)
-            _log.info(f"Compiled: $file{src.name}$0")
-            return obj
-        except subprocess.CalledProcessError:
+        _log.info(f"Compiling: $file{src.name}$0")
+        result = _cmd.call_cmd(cmd)
+
+        if result is not None:
             _log.err(f"Failed to compile $file{src.name}$0")
-        except Exception as e:
-            _log.err(f"Failed to compile $file{src.name}$0: {e}")
+
+        _log.ok(f"Compiled: $file{src.name}$0")
+        return obj
 
     def __compile_all(self) -> list[Path]:
         sources = self.__collect_srcs()
@@ -214,7 +218,7 @@ class Project:
         if failed:
             _log.err("Compilation failed", 1)
 
-        _log.info(f"Successfully compiled $B{compiled_count}/{len(sources)}$0 files")
+        _log.ok(f"Successfully compiled $B{compiled_count}/{len(sources)}$0 files")
 
         return objects
 
@@ -232,13 +236,13 @@ class Project:
 
         link_cmd.extend(["-o", str(self.prjcfg.target)])
 
-        try:
-            _cmd.call_cmd(link_cmd, check=True)
-            if not config.is_windows():
-                self.prjcfg.target.chmod(self.prjcfg.target.stat().st_mode | 0o111)
-            _log.info(f"Linked: $file{self.prjcfg.target}$0")
-        except Exception as e:
-            _log.err(f"Failed to link project $U{self.prjcfg.name}$0: {e}")
+        result = _cmd.call_cmd(link_cmd)
+        if not config.is_windows():
+            self.prjcfg.target.chmod(self.prjcfg.target.stat().st_mode | 0o111)
+        _log.info(f"Linked: $file{self.prjcfg.target}$0")
+
+        if result is not None:
+            _log.err(f"Failed to link project $U{self.prjcfg.name}$0: \n\t{result}")
 
     def run(self, arguments: list[str] | None = None) -> None:
         if arguments is None:
@@ -249,13 +253,13 @@ class Project:
                 f"Target $file`{self.prjcfg.target}`$0 not found. $DPlease build first.$0"
             )
 
-        _log.info(f"Running $file`{self.prjcfg.target}`$0")
+        start_time = time.time()
+        _log.info(f"Running $B$U{self.prjcfg.name}$0: $file`{self.prjcfg.target}`$0")
 
-        try:
-            _cmd.call_cmd([str(self.prjcfg.target)] + arguments)
-        except KeyboardInterrupt:
-            print()
-            _log.info("$DInterrupted by user$0")
-            sys.exit(130)
-        except Exception as e:
-            _log.err(f"Failed to run executable: {e}")
+        result = _cmd.call_cmd([str(self.prjcfg.target)] + arguments)
+
+        if result is not None:
+            _log.err(f"Failed to run project $U{self.prjcfg.name}$0: \n\t{result}")
+
+        elapsed = time.time() - start_time
+        _log.ok(f"Run successful! $B({elapsed:.2f}s)$0")

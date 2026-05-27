@@ -1,0 +1,15 @@
+Compiler.GXX
+-std=c++17
+-Wall
+-Wextra
+-Wpedantic
+-Iexternal\glfw\include
+-Iexternal\glad\include
+-Lexternal\glfw\lib-mingw-w64
+-lglfw3
+-lopengl32
+-lgdi32
+-lwinmm
+-ldwmapi
+-lole32
+-luser32

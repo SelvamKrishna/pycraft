@@ -13,9 +13,9 @@ _LUT: tuple[tuple[str, str], ...] = (
     ("$D", "\033[2m" if _COLOR_ENABLED else ""),
     ("$I", "\033[3m" if _COLOR_ENABLED else ""),
     ("$U", "\033[4m" if _COLOR_ENABLED else ""),
-    ("$link", "\033[1;4m" if _COLOR_ENABLED else ""),
-    ("$file", "\033[1;3m" if _COLOR_ENABLED else ""),
-    ("$dir", "\033[1;3m" if _COLOR_ENABLED else ""),
+    ("$link", "\033[1;4;36m" if _COLOR_ENABLED else ""),
+    ("$file", "\033[1;3;35m" if _COLOR_ENABLED else ""),
+    ("$dir", "\033[1;3;35m" if _COLOR_ENABLED else ""),
     ("$h1", "\033[1;34m" if _COLOR_ENABLED else ""),
 )
 
@@ -50,6 +50,10 @@ def warn(message: str) -> None:
 def err(message: str, err_code: int = 1) -> NoReturn:
     log(f"{_ERROR % err_code}: {message}")
     sys.exit(err_code)
+
+
+def ok(message: str = "") -> None:
+    info(f"-> \033[3;32m[OK]$0 {message}")
 
 
 def _cmd(cmd: list[str]) -> None:

@@ -2,7 +2,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import _core, _log, config
+from . import _core, _log, _cmd, config
 
 s_proj: _core.Project | None = None
 
@@ -63,6 +63,25 @@ def move_path(src: Path, dst: Path) -> None:
 
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(src, dst)
+
+
+def run_cmd(cmd: list[str] | str) -> None:
+    if isinstance(cmd, str):
+        _cmd.call_cmd_s(cmd)
+    else:
+        _cmd.call_cmd(cmd)
+
+
+def verify_cmd(cmd: str, ensure: bool = False) -> bool:
+    _log.info(f"Checking if cli command $B{cmd}$0 is available...")
+    result = _cmd.call_cmd_r([cmd, "--version"]) or ""
+
+    if "not found" in result.lower():
+        (_log.err if ensure else _log.warn)(result)
+        return False
+    else:
+        _log.ok(f"Command found $B{cmd}$0")
+        return True
 
 
 if __name__ == "__main__":

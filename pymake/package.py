@@ -17,8 +17,9 @@ class _IPackage:
 
     def uninstall(self, suppress_warning: bool = False) -> None:
         if self.path.exists():
+            _log.info(f"Removing package $B{self.name}$0 from $file`{self.path}`$0")
             shutil.rmtree(self.path)
-            _log.info(f"Removed package $B{self.name}$0 from $file`{self.path}`$0")
+            _log.ok("Package removed")
         elif not suppress_warning:
             _log.warn(f"Package $B{self.name}$0 not found")
 
@@ -29,16 +30,21 @@ class _IPackage:
         self.uninstall(suppress_warning=True)
         self._install_impl()
 
-    def ensure(self, mod_fn: Callable[[Path], Any] | None = None) -> None:
+    def ensure(
+        self,
+        mod_fn: Callable[[Path], Any] | None = None,
+        pre_mod_fn: Callable[[Path], Any] | None = None,
+    ) -> None:
         if self.check():
             return
 
+        if pre_mod_fn is not None:
+            pre_mod_fn(self.path)
+
         self.install()
 
-        if mod_fn is None:
-            return
-
-        mod_fn(self.path)
+        if mod_fn is not None:
+            mod_fn(self.path)
 
 
 class GitHubPackage(_IPackage):
@@ -51,7 +57,7 @@ class GitHubPackage(_IPackage):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             _cmd.call_cmd(["git", "clone", "--depth", "1", self.link, str(self.path)])
-            _log.info(f"Successfully cloned package $B{self.name}$0")
+            _log.ok(f"Successfully cloned package $B{self.name}$0")
         except Exception as e:
             _log.err(f"Failed to clone package $B{self.name}$0: {e}")
 
@@ -118,7 +124,7 @@ class ArchivePackage(_IPackage):
                 ArchivePackage.__safe_extract_zip(tmp_path, temp_extract_dir)
             else:
                 shutil.move(str(tmp_path), str(self.path))
-                _log.info(f"Successfully downloaded package $B{self.name}$0")
+                _log.ok(f"Successfully downloaded package $B{self.name}$0")
                 return
 
             extracted_items = list(temp_extract_dir.iterdir())
@@ -137,7 +143,7 @@ class ArchivePackage(_IPackage):
 
             shutil.rmtree(temp_extract_dir)
 
-            _log.info(f"Successfully extracted package $B{self.name}$0")
+            _log.ok(f"Successfully extracted package $B{self.name}$0")
 
         except Exception as e:
             _log.err(f"Failed to extract package $B{self.name}$0: {e}")
@@ -156,7 +162,7 @@ class WebPackage(_IPackage):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             _cmd.call_cmd(["curl", "-L", "--fail", self.link, "-o", str(self.path)])
-            _log.info(f"Successfully downloaded package $B{self.name}$0")
+            _log.ok(f"Successfully downloaded package $B{self.name}$0")
         except Exception as e:
             _log.err(f"Failed to download package $B{self.name}$0: {e}")
 
@@ -182,6 +188,6 @@ class CustomPackage(_IPackage):
         _log.info(f"Running custom install command for $B{self.name}$0...")
         try:
             _cmd.call_cmd_s(self.link)
-            _log.info(f"Successfully installed package $B{self.name}$0")
+            _log.ok(f"Successfully installed package $B{self.name}$0")
         except Exception as e:
             _log.err(f"Failed to install package $B{self.name}$0: {e}")
