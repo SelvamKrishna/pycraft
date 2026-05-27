@@ -1,16 +1,10 @@
-*.exe
-*.obj
-*.o
-*.a
-*.so
-*.dll
-
-/__pycache__/
-*/__pycache__/
-
 /test/
 /build/
 /source/
 /external/
 
-compile_flags.txt
+*.txt
+*.json
+
+/__pycache__/
+*/__pycache__/

@@ -1,7 +1,7 @@
 import shutil
 import sys
-from pathlib import Path
 from typing import Any, Callable, override
+from pathlib import Path
 
 from . import _cmd, _log
 
@@ -32,7 +32,7 @@ class _IPackage:
 
     def ensure(
         self,
-        mod_fn: Callable[[Path], Any] | None = None,
+        post_mod_fn: Callable[[Path], Any] | None = None,
         pre_mod_fn: Callable[[Path], Any] | None = None,
     ) -> None:
         if self.check():
@@ -43,8 +43,8 @@ class _IPackage:
 
         self.install()
 
-        if mod_fn is not None:
-            mod_fn(self.path)
+        if post_mod_fn is not None:
+            post_mod_fn(self.path)
 
 
 class GitHubPackage(_IPackage):

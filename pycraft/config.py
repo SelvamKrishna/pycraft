@@ -1,6 +1,7 @@
 import platform
 import shutil
 import sys
+import json
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -154,3 +155,25 @@ class ProjectConfig:
             _log.err(f"Test directory $dir`{self.test_dir}`$0 not found")
         else:
             self.src_dir = self.test_dir
+
+    @staticmethod
+    def load_from_json(json_file: Path) -> "ProjectConfig":
+        if not json_file.exists():
+            _log.err(f"Config file $dir`{json_file}`$0 not found")
+
+        with open(json_file, "r") as f:
+            data = json.load(f)
+
+        try:
+            data["src_dir"] = Path(data["src_dir"])
+            data["out_dir"] = Path(data["out_dir"])
+            data["test_dir"] = Path(data["test_dir"])
+            data["inc_dirs"] = tuple(Path(inc) for inc in data["inc_dirs"])
+            data["lib_dirs"] = tuple(Path(lib) for lib in data["lib_dirs"])
+            data["libraries"] = tuple(data["libraries"])
+            data["pch_header"] = Path(data["pch_header"])
+        except KeyError as e:
+            _log.warn(f"Missing key in config file: $B{e}$0 in $file`{json_file}`$0")
+            _log.warn("Falling back to default values...")
+
+        return ProjectConfig(**data)
