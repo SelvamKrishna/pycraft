@@ -35,7 +35,7 @@ def log(*args, **kwargs) -> None:
 
 
 def print_version() -> None:
-    log(f"$BPyMake v{config.VERSION}$0", end="\n")
+    log(f"$BPyCraft v{config.VERSION}$0", end="\n")
 
 
 def info(message: str) -> None:

@@ -11,3 +11,5 @@
 /build/
 /source/
 /external/
+
+compile_flags.txt
