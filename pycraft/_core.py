@@ -12,8 +12,12 @@ class Project:
     def __init__(
         self, prjcfg: config.ProjectConfig, buildcfg: config.BuildConfig
     ) -> None:
-        self.prjcfg = prjcfg
+        self.prjcfg: config.ProjectConfig = prjcfg
         self.buildcfg: config.BuildConfig = buildcfg
+
+        if self.buildcfg.is_mode_test():
+            self.prjcfg.configure_for_test()
+
         self._compile_cmd: list[str] = []
         self._link_cmd: list[str] = []
         self._pch_path: Path | None = None
@@ -194,7 +198,6 @@ class Project:
         )
 
         objects: list[Path] = []
-        compiled_count = 0
         failed = False
 
         with ThreadPoolExecutor(max_workers=self.prjcfg.parallel) as executor:
@@ -208,7 +211,6 @@ class Project:
                     obj = future.result()
                     if obj is not None:
                         objects.append(obj)
-                        compiled_count += 1
                     else:
                         failed = True
                 except Exception as e:
@@ -217,8 +219,6 @@ class Project:
 
         if failed:
             _log.err("Compilation failed", 1)
-
-        _log.ok(f"Successfully compiled $B{compiled_count}/{len(sources)}$0 files")
 
         return objects
 
@@ -256,7 +256,7 @@ class Project:
         start_time = time.time()
         _log.info(f"Running $B$U{self.prjcfg.name}$0: $file`{self.prjcfg.target}`$0")
 
-        result = _cmd.call_cmd([str(self.prjcfg.target)] + arguments)
+        result = _cmd.call_cmd([str(self.prjcfg.target)] + arguments, hide_output=False)
 
         if result is not None:
             _log.err(f"Failed to run project $U{self.prjcfg.name}$0: \n\t{result}")

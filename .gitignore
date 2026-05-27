@@ -8,6 +8,7 @@
 /__pycache__/
 */__pycache__/
 
+/test/
 /build/
 /source/
 /external/

@@ -68,9 +68,10 @@ def get_default_parallel_jobs() -> int:
 
 
 class BuildMode(Enum):
-    DEBUG = 0
-    RELEASE = 1
-    RUN = 2
+    DEBUG = "debug"
+    RELEASE = "release"
+    TEST = "test"
+    RUN = "run"
 
 
 @dataclass(frozen=True)
@@ -80,11 +81,14 @@ class BuildConfig:
     should_run_after: bool = False
     run_args: list[str] | None = None
 
+    def is_mode_debug(self) -> bool:
+        return self.mode == BuildMode.DEBUG
+
     def is_mode_release(self) -> bool:
         return self.mode == BuildMode.RELEASE
 
-    def is_mode_debug(self) -> bool:
-        return self.mode == BuildMode.DEBUG
+    def is_mode_test(self) -> bool:
+        return self.mode == BuildMode.TEST
 
     def is_mode_run(self) -> bool:
         return self.mode == BuildMode.RUN
@@ -101,6 +105,7 @@ class ProjectConfig:
     cxx_flags: tuple[str, ...] = ("-Wall", "-Wextra", "-Wpedantic")
     src_dir: Path = Path("source")
     out_dir: Path = Path("build")
+    test_dir: Path | None = None
     inc_dirs: tuple[Path, ...] = (Path("include"),)
     lib_dirs: tuple[Path, ...] = (Path("external"),)
     libraries: tuple[str, ...] = ()
@@ -135,3 +140,17 @@ class ProjectConfig:
             *[f"-L{lld}" for lld in self.lib_dirs],
             *[f"-l{lib}" for lib in self.libraries],
         )
+
+    def configure_for_test(self) -> None:
+        self.out_dir = self.out_dir / "test"
+        self.target = self.out_dir / f"{self.name}_test"
+
+        if is_windows():
+            self.target = self.target.with_suffix(".exe")
+
+        if self.test_dir is None:
+            _log.err("Test directory not set. Cannot configure for tests.")
+        elif not self.test_dir.exists():
+            _log.err(f"Test directory $dir`{self.test_dir}`$0 not found")
+        else:
+            self.src_dir = self.test_dir

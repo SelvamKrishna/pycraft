@@ -65,11 +65,11 @@ def move_path(src: Path, dst: Path) -> None:
     shutil.move(src, dst)
 
 
-def run_cmd(cmd: list[str] | str) -> None:
+def run_cmd(cmd: list[str] | str, hide_output: bool = False) -> None:
     if isinstance(cmd, str):
-        _cmd.call_cmd_s(cmd)
+        _cmd.call_cmd_s(cmd, hide_output)
     else:
-        _cmd.call_cmd(cmd)
+        _cmd.call_cmd(cmd, hide_output)
 
 
 def verify_cmd(cmd: str, ensure: bool = False) -> bool:

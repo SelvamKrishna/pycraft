@@ -3,9 +3,9 @@ import subprocess
 from . import _log
 
 
-def call_cmd_r(cmd: list[str]) -> str | None:
+def call_cmd_r(cmd: list[str], hide_output: bool = True) -> str | None:
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
+        subprocess.run(cmd, check=True, capture_output=hide_output)
     except subprocess.CalledProcessError as e:
         return "$BFailed:$0 %s" % e.stderr
     except KeyboardInterrupt:
@@ -20,9 +20,9 @@ def call_cmd_r(cmd: list[str]) -> str | None:
     return None
 
 
-def call_cmd(cmd: list[str]) -> None:
+def call_cmd(cmd: list[str], hide_output: bool = True) -> None:
     _log._cmd(cmd)
-    result: str | None = call_cmd_r(cmd)
+    result: str | None = call_cmd_r(cmd, hide_output)
 
     if result is None:
         return
@@ -34,5 +34,5 @@ def call_cmd(cmd: list[str]) -> None:
     _log.err(f"{result}, exiting...")
 
 
-def call_cmd_s(cmd: str) -> None:
-    return call_cmd(cmd.split())
+def call_cmd_s(cmd: str, hide_output: bool = True) -> None:
+    return call_cmd(cmd.split(), hide_output)

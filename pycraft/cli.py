@@ -15,6 +15,8 @@ def get_build_config() -> config.BuildConfig:
             mode = config.BuildMode.DEBUG
         case "release":
             mode = config.BuildMode.RELEASE
+        case "test":
+            mode = config.BuildMode.TEST
         case "run":
             mode = config.BuildMode.RUN
         case "--version" | "-v":
@@ -42,6 +44,7 @@ def print_help() -> None:
     _log.log("$h1Commands:$0")
     _log.log("  $Bdebug$0          Build with debug symbols (-O0 -g)")
     _log.log("  $Brelease$0        Build optimized for release (-O2 -DNDEBUG)")
+    _log.log("  $Btest$0           Build for testing (-O2 -DNDEBUG)")
     _log.log("  $Brun$0            Run the built executable")
     _log.log("")
     _log.log("$h1Options:$0")
