@@ -162,7 +162,7 @@ class ProjectConfig:
             _log.err(f"Config file $dir`{json_file}`$0 not found")
 
         with open(json_file, "r") as f:
-            data = json.load(f)
+            data = json.load(f)["project_config"]
 
         try:
             data["src_dir"] = Path(data["src_dir"])

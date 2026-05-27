@@ -4,7 +4,14 @@ import pycraft
 import pycraft.cli
 import pycraft.package
 
-PROJ = pycraft.config.ProjectConfig.load_from_json(Path("build_cfg.json"))
+PROJ = pycraft.config.ProjectConfig(
+    name="opengl_app",
+    standard="c++17",
+    test_dir=Path("test"),
+    inc_dirs=(Path("external/glfw/include"), Path("external/glad/include")),
+    lib_dirs=(Path("external/glfw/lib-mingw-w64"),),
+    libraries=("glfw3", "opengl32", "gdi32", "winmm", "dwmapi", "ole32", "user32"),
+)
 
 
 def install_packages() -> None:
@@ -42,5 +49,6 @@ if __name__ == "__main__":
         f.write("\n".join(PROJ.get_flags()))
 
     pycraft.init(PROJ, BUILD_CFG)
+    # pycraft.init(Path("build_cfg.json"), BUILD_CFG)
     pycraft.build_project()
     pycraft.run_project() if BUILD_CFG.is_mode_run() else None
