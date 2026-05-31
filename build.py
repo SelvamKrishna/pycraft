@@ -6,7 +6,8 @@ import pycraft.package
 
 PROJ_CFG = pycraft.config.ProjectConfig(
     name="opengl_app",
-    standard="c++17",
+    lang=pycraft.config.Language.CPP,
+    version=17,
     test_dir=Path("test"),
     inc_dirs=(Path("external/glfw/include"), Path("external/glad/include")),
     lib_dirs=(Path("external/glfw/lib-mingw-w64"),),

@@ -7,21 +7,16 @@ from . import _core, _log, _cmd, config
 s_proj: _core.Project | None = None
 
 
-def init(projcfg: config.ProjectConfig | Path, buildcfg: config.BuildConfig) -> None:
+def init(projcfg: config.ProjectConfig, buildcfg: config.BuildConfig) -> None:
     global s_proj
 
-    if isinstance(projcfg, Path):
-        if not projcfg.exists():
-            _log.err(f"Config file $dir`{projcfg}`$0 not found")
-
-        match projcfg.suffix:
-            case ".json":
-                projcfg = config.ProjectConfig.load_from_json(projcfg)
-            case _:
-                _log.err(f"Unknown config file type: $file`{projcfg}`$0")
+    projcfg.configure_for_mode(buildcfg.mode)
 
     s_proj = _core.Project(projcfg, buildcfg)
     _log.g_quiet = "--quiet" in sys.argv or "-q" in sys.argv
+
+    if buildcfg.should_clean:
+        remove_path(s_proj.prjcfg.out_dir)
 
 
 def build_project() -> None:

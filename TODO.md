@@ -2,7 +2,7 @@
 
 ## TEST
 
-- [ ] **PCH support :**
+- [x] **PCH support :**
   - Some compiler's expect `-include header` as a flag to precompile header
 
 ## BUGS

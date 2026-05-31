@@ -1,7 +1,6 @@
 import platform
 import shutil
 import sys
-import json
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -9,6 +8,11 @@ from pathlib import Path
 from . import _log
 
 VERSION: int = 2
+
+
+class Language(Enum):
+    C = "c"
+    CPP = "c++"
 
 
 class Compiler(Enum):
@@ -102,7 +106,8 @@ class BuildConfig:
 class ProjectConfig:
     name: str = "app"
     cc: Compiler = Compiler.GXX
-    standard: str = "c++23"
+    lang: Language = Language.CPP
+    version: int = 23
     cxx_flags: tuple[str, ...] = ("-Wall", "-Wextra", "-Wpedantic")
     src_dir: Path = Path("source")
     out_dir: Path = Path("build")
@@ -131,62 +136,63 @@ class ProjectConfig:
         if is_windows():
             self.target = self.target.with_suffix(".exe")
 
-    def get_flags(self) -> tuple[str, ...]:
-        return (
+    def get_flags(self) -> list[str]:
+        return [
             str(self.cc.value),
-            f"-std={self.standard}",
+            f"-std={self.lang.value}{self.version}",
             *self.cxx_flags,
             *[f"-D{ddf}" for ddf in self.defines],
             *[f"-I{inc}" for inc in self.inc_dirs],
+        ]
+
+    def get_link_flags(self, objs: list[Path]) -> list[str]:
+        return [
+            str(self.cc.value),
+            f"-std={self.lang.value}{self.version}",
             *[f"-L{lld}" for lld in self.lib_dirs],
+            *[str(obj) for obj in objs],
             *[f"-l{lib}" for lib in self.libraries],
-        )
+            "-o",
+            str(self.target),
+        ]
 
     def generate_compile_cmds(self, file: Path) -> None:
         with open(file, "w") as f:
             f.write("\n".join(self.get_flags()[1:]))
 
-    def configure_for_test(self) -> None:
-        self.out_dir = self.out_dir / "test"
-        self.target = self.out_dir / f"{self.name}_test"
+    def configure_for_mode(self, mode: BuildMode) -> None:
+        flags_to_add: list[str] = []
+
+        match mode:
+            case BuildMode.DEBUG:
+                self.out_dir = self.out_dir / "debug"
+                flags_to_add = ["-g"]
+
+            case BuildMode.RELEASE:
+                self.out_dir = self.out_dir / "release"
+                flags_to_add = ["-O2", "-DNDEBUG"]
+
+            case BuildMode.RUN:
+                if (self.out_dir / "debug").exists():
+                    self.out_dir = self.out_dir / "debug"
+                else:
+                    _log.err("Debug build not found. Run in debug mode first.")
+
+            case BuildMode.TEST:
+                self.out_dir = self.out_dir / "test"
+                self.name = f"test_{self.name}"
+                flags_to_add = ["-O0"]
+
+                if self.test_dir is None:
+                    _log.err("Test directory not specified.")
+                    raise ValueError
+
+                self.src_dir = self.test_dir
+
+        self.target = self.out_dir / self.name
+
+        self.cxx_flags = tuple(f for f in self.cxx_flags if f not in flags_to_add)
+        self.cxx_flags += tuple(flags_to_add)
 
         if is_windows():
             self.target = self.target.with_suffix(".exe")
-
-        if self.test_dir is None:
-            _log.err("Test directory not set. Cannot configure for tests.")
-        elif not self.test_dir.exists():
-            _log.err(f"Test directory $dir`{self.test_dir}`$0 not found")
-        else:
-            self.src_dir = self.test_dir
-
-    # TODO: add proper output instead of string
-    def get_lang(self) -> str:
-        if self.standard.startswith("c++"):
-            return "c++"
-        if self.standard.startswith("c"):
-            return "c"
-
-        return "unknown"
-
-    @staticmethod
-    def load_from_json(json_file: Path) -> "ProjectConfig":
-        if not json_file.exists():
-            _log.err(f"Config file $dir`{json_file}`$0 not found")
-
-        with open(json_file, "r") as f:
-            data = json.load(f)["project_config"]
-
-        try:
-            data["src_dir"] = Path(data["src_dir"])
-            data["out_dir"] = Path(data["out_dir"])
-            data["test_dir"] = Path(data["test_dir"])
-            data["inc_dirs"] = tuple(Path(inc) for inc in data["inc_dirs"])
-            data["lib_dirs"] = tuple(Path(lib) for lib in data["lib_dirs"])
-            data["libraries"] = tuple(data["libraries"])
-            data["pch_header"] = Path(data["pch_header"])
-        except KeyError as e:
-            _log.warn(f"Missing key in config file: $B{e}$0 in $file`{json_file}`$0")
-            _log.warn("Falling back to default values...")
-
-        return ProjectConfig(**data)
