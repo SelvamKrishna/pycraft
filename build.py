@@ -4,13 +4,14 @@ import pycraft
 import pycraft.cli
 import pycraft.package
 
-PROJ = pycraft.config.ProjectConfig(
+PROJ_CFG = pycraft.config.ProjectConfig(
     name="opengl_app",
     standard="c++17",
     test_dir=Path("test"),
     inc_dirs=(Path("external/glfw/include"), Path("external/glad/include")),
     lib_dirs=(Path("external/glfw/lib-mingw-w64"),),
     libraries=("glfw3", "opengl32", "gdi32", "winmm", "dwmapi", "ole32", "user32"),
+    pch_header=Path("source/pch.hpp"),
 )
 
 
@@ -35,7 +36,7 @@ def install_packages() -> None:
             pycraft.verify_cmd("glad", ensure=True),
         ],
         post_mod_fn=lambda path: [
-            pycraft.move_path(path / "src" / "glad.c", PROJ.src_dir / "glad.c"),
+            pycraft.move_path(path / "src" / "glad.c", PROJ_CFG.src_dir / "glad.c"),
             pycraft.remove_path(path / "src"),
         ],
     )
@@ -43,12 +44,11 @@ def install_packages() -> None:
 
 if __name__ == "__main__":
     BUILD_CFG = pycraft.cli.get_build_config()
+    PROJ_CFG.generate_compile_cmds(Path("compile_flags.txt"))
+
     install_packages()
 
-    with open("compile_flags.txt", "w") as f:
-        f.write("\n".join(PROJ.get_flags()))
-
-    pycraft.init(PROJ, BUILD_CFG)
-    # pycraft.init(Path("build_cfg.json"), BUILD_CFG)
+    pycraft.init(PROJ_CFG, BUILD_CFG)
+    # [OR] pycraft.init(Path("build_cfg.json"), BUILD_CFG)
     pycraft.build_project()
     pycraft.run_project() if BUILD_CFG.is_mode_run() else None

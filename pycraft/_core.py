@@ -3,7 +3,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from . import _cmd, _log, config
+from . import _cmd, _log, _pch, config
 
 SOURCE_EXTENSIONS = {".cpp", ".c", ".cc", ".cxx", ".c++"}
 
@@ -20,26 +20,30 @@ class Project:
 
         self._compile_cmd: list[str] = []
         self._link_cmd: list[str] = []
-        self._pch_path: Path | None = None
         self._base_cmd: list[str] = [
             self.prjcfg.cc.value,
             f"-std={self.prjcfg.standard}",
         ]
+
+        if self.prjcfg.pch_header is not None:
+            self._pch = _pch.PrecompiledHeader(self.prjcfg.pch_header, self.prjcfg)
 
     def build(self) -> None:
         if self.buildcfg.is_mode_run():
             return
 
         if self.buildcfg.should_clean:
-            self.__clean()
-
-        _log.info(f"Building project $U$B{self.prjcfg.name}$0")
+            self.__clean_build_dir()
 
         self.__build_command(self.buildcfg.is_mode_release())
-        self.__pch()
+
+        if hasattr(self, "_pch"):
+            self._pch.build()
 
         start_time = time.time()
         objects = self.__compile_all()
+
+        _log.info(f"Building project $U$B{self.prjcfg.name}$0")
 
         if not objects:
             _log.err("No object files generated")
@@ -52,7 +56,7 @@ class Project:
         if self.buildcfg.should_run_after:
             self.run(self.buildcfg.run_args)
 
-    def __clean(self) -> None:
+    def __clean_build_dir(self) -> None:
         _log.info(f"Cleaning project $B$U{self.prjcfg.name}$0")
         try:
             if self.prjcfg.out_dir.exists():
@@ -92,46 +96,28 @@ class Project:
         for lib_dir in self.prjcfg.lib_dirs:
             self._link_cmd.append(f"-L{lib_dir}")
 
-    def __pch(self) -> None:
-        if self.prjcfg.pch_header is None or not self.prjcfg.pch_header.exists():
-            return
-
-        include_flag = f"-include{self.prjcfg.pch_header.stem}"
-        pch_output = (
-            self.prjcfg.out_dir
-            / f"{self.prjcfg.pch_header.stem}.{'pch' if config.is_windows() else 'gch'}"
-        )
-
-        cmd = self._compile_cmd.copy() + [
-            "-c",
-            str(self.prjcfg.pch_header),
-            "-o",
-            str(pch_output),
-        ]
-
-        result = _cmd.call_cmd(cmd)
-        self._pch_path = pch_output
-        _log.info(f"Precompiled header: $file{pch_output}$0")
-        self._compile_cmd.append(include_flag)
-
-        if result is not None:
-            _log.warn(
-                f"Failed to precompile header: \n\t{result}, continuing without PCH"
-            )
-            self._pch_path = None
-        else:
-            _log.ok("Precompiled header generated")
-
     def __parse_dependency(self, dep_file: Path) -> set[Path]:
         if not dep_file.exists():
             return set()
 
         try:
-            content = dep_file.read_text().split(":", 1)
-            if len(content) < 2:
-                return set()
+            DEPS_READ = dep_file.read_text().split(":", 1)[1]
+            DEPS_READ = DEPS_READ.strip().replace("\\ ", " ").split()
+            deps: list[Path] = []
 
-            return set(Path(dep) for dep in content[1].strip().split())
+            i: int = 0
+
+            while i < len(DEPS_READ):
+                path: str = DEPS_READ[i]
+
+                while not Path(path).is_file() and i < len(DEPS_READ):
+                    i += 1
+                    path += " " + DEPS_READ[i]
+
+                deps.append(Path(path))
+                i += 1
+
+            return set(deps)
 
         except Exception:
             pass
@@ -146,7 +132,10 @@ class Project:
             return True
 
         for dep in self.__parse_dependency(dep_file):
-            if Path(dep).exists() and Path(dep).stat().st_mtime > obj.stat().st_mtime:
+            if not dep.exists():
+                return True
+
+            if dep.stat().st_mtime > obj.stat().st_mtime:
                 return True
 
         return False
@@ -229,6 +218,10 @@ class Project:
         self.prjcfg.target.parent.mkdir(parents=True, exist_ok=True)
 
         link_cmd = self._link_cmd.copy()
+
+        if self.prjcfg.pch_header is not None:
+            link_cmd.extend(["-include", str(self.prjcfg.pch_header)])
+
         link_cmd.extend([str(obj) for obj in objs])
 
         for lib in self.prjcfg.libraries:

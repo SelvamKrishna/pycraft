@@ -133,7 +133,7 @@ class ProjectConfig:
 
     def get_flags(self) -> tuple[str, ...]:
         return (
-            str(self.cc),
+            str(self.cc.value),
             f"-std={self.standard}",
             *self.cxx_flags,
             *[f"-D{ddf}" for ddf in self.defines],
@@ -141,6 +141,10 @@ class ProjectConfig:
             *[f"-L{lld}" for lld in self.lib_dirs],
             *[f"-l{lib}" for lib in self.libraries],
         )
+
+    def generate_compile_cmds(self, file: Path) -> None:
+        with open(file, "w") as f:
+            f.write("\n".join(self.get_flags()[1:]))
 
     def configure_for_test(self) -> None:
         self.out_dir = self.out_dir / "test"
@@ -155,6 +159,15 @@ class ProjectConfig:
             _log.err(f"Test directory $dir`{self.test_dir}`$0 not found")
         else:
             self.src_dir = self.test_dir
+
+    # TODO: add proper output instead of string
+    def get_lang(self) -> str:
+        if self.standard.startswith("c++"):
+            return "c++"
+        if self.standard.startswith("c"):
+            return "c"
+
+        return "unknown"
 
     @staticmethod
     def load_from_json(json_file: Path) -> "ProjectConfig":
